@@ -1,0 +1,4 @@
+---
+- name: Import rename net interface tasks
+  ansible.builtin.import_tasks: rename_interface.yml
+  tags: rename

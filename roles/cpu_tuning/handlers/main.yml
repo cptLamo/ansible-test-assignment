@@ -1,0 +1,45 @@
+---
+- name: Verify C-states disabled
+  ansible.builtin.shell: |
+    for cpu in /sys/devices/system/cpu/cpu*/cpuidle/state*/disable; do
+      if [ "$(cat $cpu)" != "1" ]; then
+        exit 1
+      fi
+    done
+  register: c_states_check
+  changed_when: false
+  listen: "check c_states"
+
+- name: Report C-states status
+  ansible.builtin.debug:
+    msg: "C-states have been successfully disabled for all processors"
+  when: c_states_check.rc == 0
+  listen: "check c_states"
+
+- name: Handle C-states failure
+  ansible.builtin.fail:
+    msg: "Failed to disable C-states on all processors. Please check system logs."
+  when: c_states_check.rc != 0
+  listen: "check c_states"
+
+- name: Update CPU info
+  ansible.builtin.shell: |
+    echo "CPU Information:" > /root/cpu_info.txt
+    echo "----------------" >> /root/cpu_info.txt
+    echo "Processor type:" | lscpu | grep "Model name:" | sort -u | tail -n 1 >> /root/cpu_info.txt
+    echo -e "\nC-States Status:" >> /root/cpu_info.txt
+    for state in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
+      echo "$(basename $state): $(cat $state/disable)" >> /root/cpu_info.txt
+    done
+  listen: "update cpu info"
+
+- name: Display CPU info
+  ansible.builtin.command: "cat /root/cpu_info.txt"
+  register: cpu_info_content
+  changed_when: false
+  listen: "update cpu info"
+
+- name: Show CPU info
+  ansible.builtin.debug:
+    msg: "{{ cpu_info_content.stdout_lines }}"
+  listen: "update cpu info"

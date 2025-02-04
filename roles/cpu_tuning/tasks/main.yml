@@ -1,0 +1,8 @@
+---
+- name: Import cpu c-state tasks
+  ansible.builtin.import_tasks: disable_c_states.yml
+  tags: cstate
+
+- name: Import performance tasks
+  ansible.builtin.import_tasks: set_performance_mode.yml
+  tags: performance

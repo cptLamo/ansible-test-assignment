@@ -1,0 +1,48 @@
+- name: Check CPU vendor
+  ansible.builtin.command: "lscpu"
+  register: cpu_info
+  changed_when: false
+
+- name: Set CPU vendor fact
+  ansible.builtin.set_fact:
+    is_intel: "{{ 'Intel' in cpu_info.stdout }}"
+    is_amd: "{{ 'AMD' in cpu_info.stdout }}"
+
+- name: Check current C-states
+  ansible.builtin.shell: |
+    if [ -d /sys/devices/system/cpu/cpu0/cpuidle ]; then
+      echo "Available"
+    else
+      echo "Not Available"
+    fi
+  register: c_states_available
+  changed_when: false
+
+- name: Check if C-states are already disabled
+  ansible.builtin.shell: |
+    all_disabled=true
+    for cpu in /sys/devices/system/cpu/cpu*/cpuidle/state*/disable; do
+      if [ "$(cat "$cpu")" != "1" ]; then
+        all_disabled=false
+        break
+      fi
+    done
+    echo "$all_disabled"
+  register: c_states_disabled
+  changed_when: false
+  when: c_states_available.stdout == "Available"
+
+- name: Immediately disable C-states for all CPUs
+  ansible.builtin.shell: |
+    for cpu in /sys/devices/system/cpu/cpu*/cpuidle/state*/disable; do
+      echo 1 > "$cpu"
+    done
+  when:
+  - c_states_available.stdout == "Available"
+  - c_states_disabled.stdout != "true"
+  failed_when: false
+  notify: check c_states
+
+- name: Update CPU info
+  ansible.builtin.command: "true"
+  notify: update cpu info

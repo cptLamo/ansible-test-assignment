@@ -1,0 +1,6 @@
+---
+encryption_type: "luks2"
+encrypted_name: "encrypted_disk"
+key_file_disk: "/root/luks-key-disk"
+key_file_partition: "/root/luks-key-partition"
+device_name: "/dev/xvdf"

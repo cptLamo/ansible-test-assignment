@@ -1,0 +1,65 @@
+---
+- name: Update package lists
+  ansible.builtin.apt:
+    update_cache: yes
+  become: true
+
+- name: Install cryptsetup
+  ansible.builtin.apt:
+    name: cryptsetup
+    state: present
+  become: true
+
+- name: Get disk information
+  ansible.builtin.command: "lsblk -no NAME,MOUNTPOINT {{ device_name }}"
+  register: disk_info
+  changed_when: false
+  failed_when: false
+
+- name: Check if disk is root
+  ansible.builtin.debug:
+    msg: "Cannot encrypt root disk. Please specify a non-root disk."
+  when: "'/ ' in disk_info.stdout"
+
+- name: Check if disk is already encrypted
+  ansible.builtin.command: "cryptsetup isLuks {{ device_name }}"
+  register: encryption_check
+  failed_when: false
+  changed_when: false
+  when: "'/ ' not in disk_info.stdout"
+
+- name: Skip encryption if already encrypted
+  ansible.builtin.debug:
+    msg: "disk {{ device_name }} is already encrypted. Skipping encryption."
+  when: encryption_check.rc == 0
+
+- name: Generate encryption key
+  ansible.builtin.command: "dd if=/dev/urandom of={{ key_file_disk }} bs=512 count=4"
+  args:
+    creates: "{{ key_file_disk }}"
+  become: true
+  when: encryption_check.rc != 0
+
+- name: Set secure permissions for key file
+  ansible.builtin.file:
+    path: "{{ key_file_disk }}"
+    mode: '0400'
+    owner: root
+    group: root
+  become: true
+  when: encryption_check.rc != 0
+
+- name: Encrypt disk with key file
+  ansible.builtin.command: >
+    cryptsetup -v luksFormat --batch-mode  --key-file {{ key_file_disk }} --type luks2  {{ device_name }}
+  register: encryption_result
+  become: true
+  when: encryption_check.rc != 0
+  notify: check disk encryption
+
+- name: Show encryption info
+  ansible.builtin.debug:
+    msg:
+    - "Task completed successfully."
+    - "Encrypted device: {{ device_name }}"
+  when: encryption_result is success

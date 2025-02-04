@@ -1,0 +1,76 @@
+---
+- name: Verify interface rename
+  ansible.builtin.shell: |
+    ip link show {{ new_interface_name }}  2>/dev/null || exit 1
+  register: interface_check
+  changed_when: false
+  listen: "check interface rename"
+
+- name: Report interface rename status
+  ansible.builtin.debug:
+    msg: "Network interface successfully renamed to {{ new_interface_name }} "
+  when: interface_check.rc == 0
+  listen: "check interface rename"
+
+- name: Handle rename failure
+  ansible.builtin.debug:
+    msg: "Failed to rename network interface to {{ new_interface_name }}. Please check system logs."
+  listen: handle rename failure
+
+- name: Handle existing interface
+  ansible.builtin.debug:
+    msg: "Interface {{ new_interface_name }} already exist. No renaming needed"
+  listen: interface exist
+
+- name: Update network status
+  ansible.builtin.shell: |
+    if ip link show {{ new_interface_name }} &>/dev/null; then
+      echo "Network Status Update:"
+      echo "--------------------"
+      echo "Interface Name: {{ new_interface_name }} " 
+      echo "Status: $(ip link show {{ new_interface_name }} | grep -o "state [A-Z]* " | cut -d' ' -f2)"
+      echo "MAC Address: $(ip link show {{ new_interface_name }} | grep -o "ether [^ ]* " | cut -d' ' -f2)"
+      echo "IP Address: $(ip addr show {{ new_interface_name }} | grep -w inet | awk '{print $2}')"
+      echo "Update Time: $(date '+%Y-%m-%d %H:%M:%S')"
+    else
+      echo "Interface {{ new_interface_name }} not found - rename may have been skipped"
+    fi
+  listen: "update network status"
+  register: network_status_output
+  ignore_errors: true
+
+- name: Show network status
+  ansible.builtin.debug:
+    msg: "{{ network_status_output.stdout_lines }}"
+  listen: "update network status"
+
+- name: Get CPU list
+  ansible.builtin.shell: "lscpu | grep 'CPU(s):' | head -1"
+  register: cpu_list
+  changed_when: false
+  listen: display cpu info
+
+- name: Get CPU vendor
+  ansible.builtin.shell: "lscpu | grep 'Vendor ID:'"
+  register: cpu_vendor
+  changed_when: false
+  listen: display cpu info
+
+- name: Check Hyper-Threading (Intel) or SMT (AMD) status
+  ansible.builtin.shell: |
+    if [ -f /sys/devices/system/cpu/smt/active ]; then
+      cat /sys/devices/system/cpu/smt/active
+    else
+      echo "Not Available"
+    fi
+  register: ht_smt_status
+  changed_when: false
+  listen: display cpu info
+
+- name: Display CPU info
+  ansible.builtin.debug:
+    msg:
+    - "CPU List: {{ cpu_list.stdout }}"
+    - "CPU Vendor: {{ 'Intel' if 'Intel' in cpu_vendor.stdout else 'AMD' if 'AMD' in cpu_vendor.stdout else 'Unknown' }}"
+    - "Hyper-Threading / SMT Status: {{ 'Enabled' if ht_smt_status.stdout == '1' else 'Disabled' }}"
+  listen: display cpu info

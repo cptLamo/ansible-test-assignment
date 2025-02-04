@@ -1,0 +1,8 @@
+---
+- name: Import disk encryption tasks
+  ansible.builtin.import_tasks: encrypt_disk.yml
+  tags: disk
+
+- name: Import partition encryption tasks
+  ansible.builtin.import_tasks: encrypt_partition.yml
+  tags: encryption

@@ -1,0 +1,13 @@
+---
+- name: Verify if devices are encrypted
+  ansible.builtin.shell: "cryptsetup isLuks {{ item }} 2>&1 || true"
+  register: encryption_check
+  changed_when: false
+  failed_when: false
+  with_items:
+  - "{{ device_name }}"
+  - "{{ partition_to_encrypt }}"
+  when: item is defined and item | length > 0
+  listen:
+  - "check disk encryption"
+  - "check partition encryption"

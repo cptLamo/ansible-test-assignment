@@ -1,0 +1,22 @@
+---
+- name: Configure Server
+  hosts: all
+  become: true
+
+  pre_tasks:
+  - name: Gather system information
+    ansible.builtin.setup:
+    tags: always
+
+  roles:
+  - role: encryption
+    vars:
+      check_mode: false
+
+  - role: cpu_tuning
+    vars:
+      check_mode: false
+
+  - role: network
+    vars:
+      check_mode: false

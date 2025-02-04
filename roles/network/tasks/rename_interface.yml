@@ -1,0 +1,122 @@
+---
+- name: Check if interface is already named {{ new_interface_name }}
+  ansible.builtin.shell: "ip link show {{ new_interface_name }} 2>/dev/null"
+  register: interface_check
+  changed_when: false
+  failed_when: false
+  ignore_errors: true
+
+- name: Handle existing interface
+  ansible.builtin.debug:
+    msg: "Interface {{ new_interface_name }} already exists. Skipping rename."
+  when: interface_check.rc == 0
+  notify: interface exist
+
+- name: Find netplan configuration file
+  ansible.builtin.find:
+    paths: "{{ net_interface_path }}"
+    patterns: "*.yaml"
+  register: netplan_files
+  when: interface_check.rc != 0
+
+- name: Fail if no netplan configuration file found
+  ansible.builtin.debug:
+    msg: "No netplan configuration file found in {{ net_interface_path }}"
+  when: interface_check.rc != 0 and netplan_files.matched == 0
+  notify: handle rename failure
+
+- name: Set netplan file variable
+  ansible.builtin.set_fact:
+    netplan_config: "{{ netplan_files.files[0].path }}"
+  when:
+  - interface_check.rc != 0
+  - netplan_files.matched > 0
+
+- name: Get first non-loopback interface
+  ansible.builtin.shell: "ip -o link show | grep -v 'lo:' | head -n1 | awk -F': ' '{print $2}'"
+  register: active_interface_cmd
+  changed_when: false
+  when: interface_check.rc != 0
+
+- name: Set active interface
+  ansible.builtin.set_fact:
+    active_interface: "{{ active_interface_cmd.stdout | trim }}"
+  when:
+  - interface_check.rc != 0
+  - active_interface_cmd.stdout | trim != ''
+
+- name: Verify interface exists
+  ansible.builtin.shell: "ip link show {{ active_interface }} >/dev/null 2>&1"
+  register: interface_exists
+  changed_when: false
+  failed_when: false
+  when:
+  - interface_check.rc != 0
+  - active_interface is defined
+
+- name: Get MAC address for interface
+  ansible.builtin.shell: "ip link show {{ active_interface }} | grep -i 'link/ether' | awk '{print $2}'"
+  register: extracted_mac
+  changed_when: false
+  when:
+  - interface_check.rc != 0
+  - active_interface is defined
+  - interface_exists.rc == 0
+
+- name: Backup netplan configuration
+  ansible.builtin.copy:
+    src: "{{ netplan_config }}"
+    dest: "{{ netplan_config }}.backup"
+    remote_src: true
+  when:
+  - interface_check.rc != 0
+  - netplan_files.matched > 0
+
+- name: Modify netplan configuration for renaming
+  ansible.builtin.template:
+    src: "netplan-config.yaml.j2"
+    dest: "{{ netplan_config }}"
+    mode: '0644'
+  when:
+  - interface_check.rc != 0
+  - netplan_files.matched > 0
+  - active_interface is defined
+  - extracted_mac.stdout | length >= 17
+  notify: handle rename failure
+
+- name: Apply netplan changes
+  ansible.builtin.command: "netplan apply"
+  register: netplan_apply_result
+  changed_when: true
+  when:
+  - interface_check.rc != 0
+  - netplan_files.matched > 0
+  - active_interface is defined
+  - extracted_mac.stdout | length >= 17
+  notify:
+  - check interface rename
+  - update network status
+  - display cpu info
+
+- name: Verify connectivity
+  ansible.builtin.ping:
+    data: "Interface rename test"
+  register: ping_result
+  ignore_errors: true
+  when: interface_check.rc != 0
+
+- name: Report connectivity status
+  ansible.builtin.debug:
+    msg: "Network connectivity {{ 'maintained' if ping_result is success else 'lost' }} after interface rename"
+  when: interface_check.rc != 0
+
+- name: Trigger network and cpu status display
+  ansible.builtin.debug:
+    msg: "Triggering network and CPU status display"
+  changed_when: true
+  notify:
+  - update network status
+  - display cpu info
+
+- name: Force handlers
+  meta: flush_handlers

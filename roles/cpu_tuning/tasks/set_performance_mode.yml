@@ -1,0 +1,44 @@
+---
+- name: System update & kernel-tools handler
+  ansible.builtin.debug:
+    msg: "Triggering system update..."
+  notify: 
+    - update system
+    - install kernel-tools
+
+- meta: flush_handlers
+
+- name: Check if CPU frequency management is available
+  ansible.builtin.command: "cpupower frequency-info -g"
+  register: available_governors
+  changed_when: false
+  failed_when: false
+
+- name: Check if scaling driver exists
+  ansible.builtin.stat:
+    path: "/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver"
+  register: scaling_driver_file
+
+- name: Set skip flag if CPU power management is not available
+  ansible.builtin.set_fact:
+    skip_configuration: true
+  when: 
+    - "'Not Available' in available_governors.stdout or not scaling_driver_file.stat.exists"
+
+- name: Exit if CPU power management is not available
+  ansible.builtin.debug:
+    msg: "CPU power management is not available on this system. Skipping configuration."
+  when: skip_configuration
+
+- name: Notify user
+  ansible.builtin.debug:
+    msg: "Contact your nearest DevOps engineer to complete the playbook."
+  when: not skip_configuration
+
+- name: Show performance mode status
+  ansible.builtin.debug:
+    msg:
+      - "CPU Performance Configuration"
+      - "Scaling Driver: {{ scaling_driver.stdout | default('Not available') }}"
+      - "Available Governors: {{ available_governors.stdout_lines | join(', ') }}"
+  when: not skip_configuration

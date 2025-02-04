@@ -1,0 +1,96 @@
+---
+- name: Update package lists
+  ansible.builtin.apt:
+    update_cache: yes
+  become: true
+
+- name: Install cryptsetup
+  ansible.builtin.apt:
+    name: cryptsetup
+    state: present
+  become: true
+
+- name: Get root partition information
+  ansible.builtin.shell: "findmnt -n -o SOURCE /"
+  register: root_partition
+  changed_when: false
+
+- name: Get disk name from root partition
+  ansible.builtin.set_fact:
+    root_disk: "{{ root_partition.stdout | regex_replace('[0-9]+$', '') }}"
+
+- name: Get all partitions on the root disk
+  ansible.builtin.command: "lsblk -nlo NAME,MOUNTPOINT {{ root_disk }}"
+  register: disk_partitions
+  changed_when: false
+
+- name: Identify root-adjacent partitions
+  ansible.builtin.set_fact:
+    adjacent_partitions: "{{ disk_partitions.stdout_lines | select('match', root_disk | basename + '[0-9]+') | list }}"
+
+- name: Filter out partitions already in use
+  ansible.builtin.set_fact:
+    filtered_partitions: "{{ adjacent_partitions | reject('search', '/boot|/boot/efi|/') | list }}"
+
+- name: Set partition to encrypt if available
+  ansible.builtin.set_fact:
+    partition_to_encrypt: "{{ filtered_partitions[0] | regex_replace('^', '/dev/') if filtered_partitions else '' }}"
+
+- name: No suitable partition found
+  ansible.builtin.debug:
+    msg: "No adjacent partition available for encryption."
+  when: partition_to_encrypt == ""
+
+- name: Check if target partition is mounted
+  ansible.builtin.command: "findmnt {{ partition_to_encrypt }}"
+  register: mount_check
+  failed_when: false
+  changed_when: false
+  when: partition_to_encrypt != ""
+
+- name: Get partition mount point if mounted
+  ansible.builtin.set_fact:
+    current_mount: "{{ mount_check.stdout.split()[1] if mount_check.rc == 0 else '' }}"
+  when: partition_to_encrypt != ""
+
+- name: Check if partition is already encrypted
+  ansible.builtin.command: "cryptsetup isLuks {{ partition_to_encrypt }}"
+  register: encryption_check
+  failed_when: false
+  changed_when: false
+  when: partition_to_encrypt != ""
+
+- name: Partition already encrypted
+  ansible.builtin.debug:
+    msg: "Partition {{ partition_to_encrypt }} is already encrypted."
+  when: encryption_check.rc == 0
+
+- name: Generate encryption key
+  ansible.builtin.command: "dd if=/dev/urandom of={{ key_file_partition }} bs=512 count=4"
+  args:
+    creates: "{{ key_file_partition }}"
+  become: true
+  when: encryption_check.rc != 0
+
+- name: Set secure permissions for key file
+  ansible.builtin.file:
+    path: "{{ key_file_partition }}"
+    mode: '0400'
+    owner: root
+    group: root
+  become: true
+  when: encryption_check.rc != 0
+
+- name: Encrypt root-adjacent partition
+  ansible.builtin.command: >
+    cryptsetup -v luksFormat --batch-mode --key-file {{ key_file_partition }} --type luks2 {{ partition_to_encrypt }}
+  register: encryption_result
+  become: true
+  when: encryption_check.rc != 0 and partition_to_encrypt != ""
+  notify: check partition encryption
+
+- name: Show encryption info
+  ansible.builtin.debug:
+    msg:
+    - "Encryption task completed for partition: {{ partition_to_encrypt }}"
+  when: encryption_result is success
