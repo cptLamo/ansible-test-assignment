@@ -8,12 +8,6 @@ This role manages CPU power states and performance settings:
 
 - kernel-tools package
 
-## Role Variables
-
-### Default Variables (defaults/main.yml)
-
-### Role Variables (vars/main.yml)
-
 ## Usage
 
 1. Run the role:

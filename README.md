@@ -48,7 +48,7 @@ Detailed documentation for each role is available in their respective directorie
 
 - [Encryption Role](roles/encryption/README.md)
 - [CPU Tuning Role](roles/cpu_tuning/README.md)
-- [CPU Tuning Role](roles/network/README.md)
+- [Network rename Role](roles/network/README.md)
 
 ## Directory Structure
 ```
@@ -59,7 +59,7 @@ aws-test/
 │   ├── cpu_tuning/        # CPU performance tuning role
 │   ├── network/           # Network configuration role
 │   └── encryption/        # Disk encryption role
-└── playbook.yml          # Main playbook
+└── playbook.yml           # Main playbook
 ```
 
 ## Configuration

@@ -40,7 +40,7 @@ The role includes handlers for:
 - Verifying interface rename
 - Showing network status
 - Updating network configuration
-- CPU info
+- Showing CPU info
 
 ## Notes
 
