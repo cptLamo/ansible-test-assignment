@@ -24,22 +24,18 @@
 
 - name: Update CPU info
   ansible.builtin.shell: |
-    echo "CPU Information:" > /root/cpu_info.txt
-    echo "----------------" >> /root/cpu_info.txt
-    echo "Processor type:" | lscpu | grep "Model name:" | sort -u | tail -n 1 >> /root/cpu_info.txt
-    echo -e "\nC-States Status:" >> /root/cpu_info.txt
+    echo "CPU Information:"
+    echo "----------------"
+    echo "Processor type: $(lscpu | grep 'Model name:' | sort -u | tail -n 1)"
+    echo -e "\nC-States Status:"
     for state in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
-      echo "$(basename $state): $(cat $state/disable)" >> /root/cpu_info.txt
+      echo "$(basename $state): $(cat $state/disable)"
     done
+  register: cpu_info_output
   listen: "update cpu info"
-
-- name: Display CPU info
-  ansible.builtin.command: "cat /root/cpu_info.txt"
-  register: cpu_info_content
   changed_when: false
-  listen: "update cpu info"
 
 - name: Show CPU info
   ansible.builtin.debug:
-    msg: "{{ cpu_info_content.stdout_lines }}"
+    msg: "{{ cpu_info_output.stdout_lines }}"
   listen: "update cpu info"
